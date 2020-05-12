@@ -429,8 +429,10 @@ class NEXT_STAGE_G(nn.Module):
             nn.Conv2d(self.gf_dim * 2, 1, kernel_size=1, stride=1, padding=0),
             nn.Sigmoid()
         )
-        self.residual = self._make_layer(ResBlock, ngf * 2)
-        self.upsample = upBlock(ngf * 2, ngf)
+        # self.residual = self._make_layer(ResBlock, ngf * 2)
+        self.residual = self._make_layer(ResBlock, ngf)
+        # self.upsample = upBlock(ngf * 2, ngf)
+        self.upsample = upBlock(ngf, ngf)
 
     def forward(self, h_code, c_code, word_embs, mask, cap_lens):
         """
@@ -470,7 +472,7 @@ class NEXT_STAGE_G(nn.Module):
         response_gate = self.response_gate(torch.cat((h_code, memory_out), 1))
         # h_code_new --> [bz, queryL * 2, ih, iw]
         h_code_new = h_code * (1 - response_gate) + response_gate * memory_out
-        h_code_new = torch.cat((h_code_new, h_code_new), 1)
+        # h_code_new = torch.cat((h_code_new, h_code_new), 1)
 
         out_code = self.residual(h_code_new)
         # state size ngf/2 x 2in_size x 2in_size
