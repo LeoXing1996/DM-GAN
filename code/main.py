@@ -17,6 +17,8 @@ import numpy as np
 import torch
 import torchvision.transforms as transforms
 
+import wandb
+
 dir_path = (os.path.abspath(os.path.join(os.path.realpath(__file__), './.')))
 sys.path.append(dir_path)
 
@@ -30,6 +32,9 @@ def parse_args():
     parser.add_argument('--data_dir', dest='data_dir', type=str, default='')
     parser.add_argument('--NET_G', type=str, default='')
     parser.add_argument('--manualSeed', type=int, help='manual seed')
+    parser.add_argument('--logs', action='store_true')
+    parser.add_argument('--no_time', action='store_true')
+    parser.add_argument('--name', type=str)
     args = parser.parse_args()
     return args
 
@@ -116,10 +121,18 @@ if __name__ == "__main__":
     torch.backends.cudnn.deterministic = True
     print("Seed: %d" % (args.manualSeed))
 
-    now = datetime.datetime.now(dateutil.tz.tzlocal())
-    timestamp = now.strftime('%Y_%m_%d_%H_%M_%S')
-    output_dir = '../output/%s_%s_%s' % \
-        (cfg.DATASET_NAME, cfg.CONFIG_NAME, timestamp)
+    # now = datetime.datetime.now(dateutil.tz.tzlocal())
+    # timestamp = now.strftime('%Y_%m_%d_%H_%M_%S')
+    # output_dir = '../output/%s_%s_%s' % \
+    #     (cfg.DATASET_NAME, cfg.CONFIG_NAME, timestamp)
+
+    name = args.name if args.name else cfg.CONFIG_NAME
+    output_dir = '../output/%s_%s' % (cfg.DATASET_NAME, name)
+    if os.path.exists(output_dir) or not args.no_time:
+        now = datetime.datetime.now(dateutil.tz.tzlocal())
+        timestamp = now.strftime('%Y_%m_%d_%H_%M_%S')
+        output_dir += '_' + timestamp
+    cfg.EXP_NAME = output_dir.split('/')[-1]
 
     split_dir, bshuffle = 'train', True
     if not cfg.TRAIN.FLAG:
@@ -140,8 +153,16 @@ if __name__ == "__main__":
         dataset, batch_size=cfg.TRAIN.BATCH_SIZE,
         drop_last=True, shuffle=bshuffle, num_workers=int(cfg.WORKERS))
 
+    if args.logs:
+        if not os.path.exists('../logs'):
+            os.makedirs('../logs')
+        logger = wandb.init(name=cfg.EXP_NAME, project='DM-GAN',
+                            config=cfg, dir='../logs')
+    else:
+        logger = None
+
     # Define models and go to train/evaluate
-    algo = trainer(output_dir, dataloader, dataset.n_words, dataset.ixtoword, dataset)
+    algo = trainer(output_dir, dataloader, dataset.n_words, dataset.ixtoword, dataset, logger)
 
     start_t = time.time()
     if cfg.TRAIN.FLAG:

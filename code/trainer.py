@@ -25,17 +25,15 @@ import time
 import numpy as np
 import sys
 
+
 # ################# Text to image task############################ #
 class condGANTrainer(object):
-    def __init__(self, output_dir, data_loader, n_words, ixtoword, dataset):
+    def __init__(self, output_dir, data_loader, n_words, ixtoword, dataset, logger):
         if cfg.TRAIN.FLAG:
             self.model_dir = os.path.join(output_dir, 'Model')
             self.image_dir = os.path.join(output_dir, 'Image')
             mkdir_p(self.model_dir)
             mkdir_p(self.image_dir)
-
-        #torch.cuda.set_device(cfg.GPU_ID)
-        #cudnn.benchmark = True
 
         self.batch_size = cfg.TRAIN.BATCH_SIZE
         self.max_epoch = cfg.TRAIN.MAX_EPOCH
@@ -46,6 +44,7 @@ class condGANTrainer(object):
         self.data_loader = data_loader
         self.dataset = dataset
         self.num_batches = len(self.data_loader)
+        self.logger = logger
 
     def build_models(self):
         def count_parameters(model):
@@ -89,7 +88,7 @@ class condGANTrainer(object):
         # #######################generator and discriminators############## #
         netsD = []
         if cfg.GAN.B_DCGAN:
-            if cfg.TREE.BRANCH_NUM ==1:
+            if cfg.TREE.BRANCH_NUM == 1:
                 from model import D_NET64 as D_NET
             elif cfg.TREE.BRANCH_NUM == 2:
                 from model import D_NET128 as D_NET
@@ -178,13 +177,13 @@ class condGANTrainer(object):
         backup_para = copy_G_params(netG)
         load_params(netG, avg_param_G)
         torch.save(netG.state_dict(),
-            '%s/netG_epoch_%d.pth' % (self.model_dir, epoch))
+                   '%s/netG_epoch_%d.pth' % (self.model_dir, epoch))
         load_params(netG, backup_para)
         #
         for i in range(len(netsD)):
             netD = netsD[i]
             torch.save(netD.state_dict(),
-                '%s/netD%d.pth' % (self.model_dir, i))
+                       '%s/netD%d.pth' % (self.model_dir, i))
         print('Save G/Ds models.')
 
     def set_requires_grad_value(self, models_list, brequires):
@@ -194,7 +193,7 @@ class condGANTrainer(object):
 
     def save_img_results(self, netG, noise, sent_emb, words_embs, mask,
                          image_encoder, captions, cap_lens,
-                         gen_iterations, real_image, name='current'):
+                         gen_iterations):
         # Save images
         fake_imgs, attention_maps, _, _ = netG(noise, sent_emb, words_embs, mask, cap_lens)
         for i in range(len(attention_maps)):
@@ -211,7 +210,7 @@ class condGANTrainer(object):
                                    attn_maps, att_sze, lr_imgs=lr_img)
             if img_set is not None:
                 im = Image.fromarray(img_set)
-                fullpath = '%s/G_%s_%d_%d.png'% (self.image_dir, name, gen_iterations, i)
+                fullpath = '%s/G_%s_%d.png' % (self.image_dir, gen_iterations, i)
                 im.save(fullpath)
 
         # for i in range(len(netsD)):
@@ -228,11 +227,9 @@ class condGANTrainer(object):
                                captions, self.ixtoword, att_maps, att_sze)
         if img_set is not None:
             im = Image.fromarray(img_set)
-            fullpath = '%s/D_%s_%d.png'\
-                % (self.image_dir, name, gen_iterations)
+            fullpath = '%s/D_%d.png'\
+                % (self.image_dir, gen_iterations)
             im.save(fullpath)
-        #print(real_image.type)
-
 
     def train(self):
         text_encoder, image_encoder, netG, netsD, start_epoch = self.build_models()
@@ -248,6 +245,7 @@ class condGANTrainer(object):
             noise, fixed_noise = noise.cuda(), fixed_noise.cuda()
 
         gen_iterations = 0
+        loss_dict = {}
         # gen_iterations = start_epoch * self.num_batches
         for epoch in range(start_epoch, self.max_epoch):
             start_t = time.time()
@@ -287,14 +285,17 @@ class condGANTrainer(object):
                 D_logs = ''
                 for i in range(len(netsD)):
                     netsD[i].zero_grad()
-                    errD, log = discriminator_loss(netsD[i], imgs[i], fake_imgs[i],
-                                              sent_emb, real_labels, fake_labels)
+                    errD, log, d_dict = discriminator_loss(netsD[i], imgs[i], fake_imgs[i],
+                                                           sent_emb, real_labels, fake_labels)
                     # backward and update parameters
                     errD.backward()
                     optimizersD[i].step()
                     errD_total += errD
                     D_logs += 'errD%d: %.2f ' % (i, errD.item())
                     D_logs += log
+                    loss_dict['Real_Acc_{}'.format(i)] = d_dict['Real_Acc']
+                    loss_dict['Fake_Acc_{}'.format(i)] = d_dict['Fake_Acc']
+                    loss_dict['errD_{}'.format(i)] = errD.item()
 
                 #######################################################
                 # (4) Update G network: maximize log(D(G(z)))
@@ -306,12 +307,14 @@ class condGANTrainer(object):
                 # do not need to compute gradient for Ds
                 # self.set_requires_grad_value(netsD, False)
                 netG.zero_grad()
-                errG_total, G_logs = \
+                errG_total, G_logs, g_dict = \
                     generator_loss(netsD, image_encoder, fake_imgs, real_labels,
                                    words_embs, sent_emb, match_labels, cap_lens, class_ids)
                 kl_loss = KL_loss(mu, logvar)
                 errG_total += kl_loss
                 G_logs += 'kl_loss: %.2f ' % kl_loss.item()
+                loss_dict.update(g_dict)
+                loss_dict['kl_loss'] = kl_loss.item()
                 # backward and update parameters
                 errG_total.backward()
                 optimizerG.step()
@@ -321,12 +324,14 @@ class condGANTrainer(object):
                 if gen_iterations % 100 == 0:
                     print('Epoch [{}/{}] Step [{}/{}]'.format(epoch, self.max_epoch, step,
                                                               self.num_batches) + ' ' + D_logs + ' ' + G_logs)
+                if self.logger:
+                    self.logger.log(loss_dict)
                 # save images
                 if gen_iterations % 10000 == 0:
                     backup_para = copy_G_params(netG)
                     load_params(netG, avg_param_G)
-                    #self.save_img_results(netG, fixed_noise, sent_emb, words_embs, mask, image_encoder,
-                    #                      captions, cap_lens, epoch, imgs[-1], name='average')
+                    self.save_img_results(netG, fixed_noise, sent_emb, words_embs, mask, image_encoder,
+                                          captions, cap_lens, gen_iterations)
                     load_params(netG, backup_para)
                     #
                     # self.save_img_results(netG, fixed_noise, sent_emb,
@@ -419,14 +424,16 @@ class condGANTrainer(object):
             R = np.zeros(30000)
             cont = True
             for ii in range(11):  # (cfg.TEXT.CAPTIONS_PER_IMAGE):
-                if (cont == False):
+                # if (cont == False):
+                if not cont:
                     break
                 for step, data in enumerate(self.data_loader, 0):
                     cnt += batch_size
-                    if (cont == False):
+                    # if (cont == False):
+                    if not cont:
                         break
                     if step % 100 == 0:
-                       print('cnt: ', cnt)
+                        print('cnt: ', cnt)
                     # if step > 50:
                     #     break
 
@@ -471,8 +478,8 @@ class condGANTrainer(object):
                         hidden = text_encoder.init_hidden(99)
                         _, sent_emb_t = text_encoder(mis_captions, mis_captions_len, hidden)
                         rnn_code = torch.cat((sent_emb[i, :].unsqueeze(0), sent_emb_t), 0)
-                        ### cnn_code = 1 * nef
-                        ### rnn_code = 100 * nef
+                        # cnn_code = 1 * nef
+                        # rnn_code = 100 * nef
                         scores = torch.mm(cnn_code[i].unsqueeze(0), rnn_code.transpose(0, 1))  # 1* 100
                         cnn_code_norm = torch.norm(cnn_code[i].unsqueeze(0), 2, dim=1, keepdim=True)
                         rnn_code_norm = torch.norm(rnn_code, 2, dim=1, keepdim=True)
@@ -491,10 +498,6 @@ class condGANTrainer(object):
                         R_std = np.std(sum)
                         print("R mean:{:.4f} std:{:.4f}".format(R_mean, R_std))
                         cont = False
-
-
-
-
 
     def gen_example(self, data_dic):
         if cfg.TRAIN.NET_G == '':

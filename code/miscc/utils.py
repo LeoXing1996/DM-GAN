@@ -73,7 +73,6 @@ def build_super_images(real_imgs, captions, ixtoword,
         iend = (i + 3) * (vis_size + 2)
         text_convas[:, istart:iend, :] = COLOR_DIC[i]
 
-
     real_imgs = \
         nn.Upsample(size=(vis_size, vis_size), mode='bilinear', align_corners=True)(real_imgs)
     # [-1, 1] --> [0, 1]
@@ -289,9 +288,12 @@ def weights_init(m):
     classname = m.__class__.__name__
     if classname.find('Conv') != -1:
         #print(m.state_dict().keys())
-        if m.state_dict().keys()[0] == 'weight':
+        # if m.state_dict().keys()[0] == 'weight':
+        if 'weight' in m.state_dict().keys():
             nn.init.orthogonal_(m.weight.data, 1.0)
-        elif m.state_dict().keys()[3] == 'weight_bar':
+        # elif m.state_dict().keys()[3] == 'weight_bar':
+        elif 'weight_bar' in m.state_dict().keys():
+            # weight for spectral norm
             nn.init.orthogonal_(m.weight_bar.data, 1.0)
         #nn.init.orthogonal(m.weight.data, 1.0)
     elif classname.find('BatchNorm') != -1:

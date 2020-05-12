@@ -13,6 +13,7 @@ from GlobalAttention import GlobalAttentionGeneral as ATT_NET
 from GlobalAttention import GlobalAttention_text as ATT_NET_text
 from spectral import SpectralNorm
 
+
 class GLU(nn.Module):
     def __init__(self):
         super(GLU, self).__init__()
@@ -346,7 +347,7 @@ class Memory(nn.Module):
     def applyMask(self, mask):
         self.mask = mask  # batch x sourceL
 
-    def forward(self, input, context_key, content_value):#
+    def forward(self, input, context_key, content_value):
         """
             input: batch x idf x ih x iw (queryL=ihxiw)
             context: batch x idf x sourceL
@@ -392,7 +393,7 @@ class NEXT_STAGE_G(nn.Module):
         self.ef_dim = nef
         self.cf_dim = ncf
         self.num_residual = cfg.GAN.R_NUM
-        self.size = size
+        self.size = size  # --> image size
         self.define_module()
 
     def _make_layer(self, block, channel_num):
@@ -439,24 +440,35 @@ class NEXT_STAGE_G(nn.Module):
             att1: batch x sourceL x queryL
         """
         # Memory Writing
+        # import ipdb
+        # ipdb.set_trace()
+        # --> [bz, sourceL, cdf] / [bz, sourceL, self.ef_dim]
         word_embs_T = torch.transpose(word_embs, 1, 2).contiguous()
+        # h_code_avg --> [bz, queryL, 1] / [bz, self.gf_dim, 1]
         h_code_avg = self.avg(h_code).detach()
         h_code_avg = h_code_avg.squeeze(3)
+        # h_code_avg_T --> [bz, 1, queryL] / [bz, 1, self.gf_dim]
         h_code_avg_T = torch.transpose(h_code_avg, 1, 2).contiguous()
+        # self.A(word_embs_T) --> [bz, sourceL, 1], gate1 --> [bz, 1, sourceL]
         gate1 = torch.transpose(self.A(word_embs_T), 1, 2).contiguous()
+        # self.B(h_code_avg_T) --> [bz, 1, 1], gate2 --> [bz, 1, sourceL]
         gate2 = self.B(h_code_avg_T).repeat(1, 1, word_embs.size(2))
         writing_gate = torch.sigmoid(gate1 + gate2)
+        # h_code_avg --> [bz, queryL, sourceL]
         h_code_avg = h_code_avg.repeat(1, 1, word_embs.size(2))
+        # memory --> [bz, self.gf_dim * 2, sourceL]
         memory = self.M_w(word_embs) * writing_gate + self.M_r(h_code_avg) * (1 - writing_gate)
 
         # Key Addressing and Value Reading
-        key = self.key(memory)
-        value = self.value(memory)
+        key = self.key(memory)  # --> [bz, self.gf_dim, sourceL]
+        value = self.value(memory)  # --> [bz, self.gf_dim, sourceL]
         self.memory_operation.applyMask(mask)
         memory_out, att = self.memory_operation(h_code, key, value)
 
         # Key Response
+        # response_gate --> [bz, 1, ih, iw]
         response_gate = self.response_gate(torch.cat((h_code, memory_out), 1))
+        # h_code_new --> [bz, queryL * 2, ih, iw]
         h_code_new = h_code * (1 - response_gate) + response_gate * memory_out
         h_code_new = torch.cat((h_code_new, h_code_new), 1)
 
@@ -530,7 +542,6 @@ class G_NET(nn.Module):
         return fake_imgs, att_maps, mu, logvar
 
 
-
 class G_DCGAN(nn.Module):
     def __init__(self):
         super(G_DCGAN, self).__init__()
@@ -590,6 +601,7 @@ def downBlock(in_planes, out_planes):
         nn.LeakyReLU(0.2, inplace=True)
     )
     return block
+
 
 # Downsale the spatial size by a factor of 16
 def encode_image_by_16times(ndf):

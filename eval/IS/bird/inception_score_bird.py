@@ -162,10 +162,10 @@ def inference(images, num_classes, for_training=False, restore_logits=True,
     """
     # Parameters for BatchNorm.
     batch_norm_params = {
-      # Decay for the moving averages.
-      'decay': BATCHNORM_MOVING_AVERAGE_DECAY,
-      # epsilon to prevent 0s in variance.
-      'epsilon': 0.001,
+        #  Decay for the moving averages.
+        'decay': BATCHNORM_MOVING_AVERAGE_DECAY,
+        # epsilon to prevent 0s in variance.
+        'epsilon': 0.001,
     }
     # Set weight_decay for weights in Conv and FC layers.
     with slim.arg_scope([slim.ops.conv2d, slim.ops.fc], weight_decay=0.00004):
@@ -174,12 +174,12 @@ def inference(images, num_classes, for_training=False, restore_logits=True,
                             activation=tf.nn.relu,
                             batch_norm_params=batch_norm_params):
             logits, endpoints = slim.inception.inception_v3(
-              images,
-              dropout_keep_prob=0.8,
-              num_classes=num_classes,
-              is_training=for_training,
-              restore_logits=restore_logits,
-              scope=scope)
+                images,
+                dropout_keep_prob=0.8,
+                num_classes=num_classes,
+                is_training=for_training,
+                restore_logits=restore_logits,
+                scope=scope)
 
     # Grab the logits associated with the side head. Employed during training.
     auxiliary_logits = endpoints['aux_logits']
@@ -200,7 +200,7 @@ def main(unused_argv=None):
 
                 # Build a Graph that computes the logits predictions from the
                 # inference model.
-                inputs = tf.placeholder( tf.float32, [FLAGS.batch_size, 299, 299, 3], name='inputs')
+                inputs = tf.placeholder(tf.float32, [FLAGS.batch_size, 299, 299, 3], name='inputs')
                 # print(inputs)
 
                 logits, _ = inference(inputs, num_classes)
@@ -220,8 +220,6 @@ def main(unused_argv=None):
                 print('Restore the model from %s).' % FLAGS.checkpoint_dir)
                 images = load_data(fullpath)
                 get_inception_score(sess, images, pred_op)
-
-
 
 
 if __name__ == '__main__':

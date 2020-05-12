@@ -64,6 +64,7 @@ parser.add_argument('-c', '--gpu', default='', type=str,
 parser.add_argument('--path1', type=str, default=64)
 parser.add_argument('--path2', type=str, default=64)
 
+
 def get_activations(images, model, batch_size=64, dims=2048, cuda=False, verbose=True):
     """Calculates the activations of the pool_3 layer for all images.
 
@@ -101,7 +102,7 @@ def get_activations(images, model, batch_size=64, dims=2048, cuda=False, verbose
     for i, batch in enumerate(images):
         #batch = batch[0]
         #if verbose:
-            #print('\rPropagating batch %d/%d' % (i + 1, n_batches), end='', flush=True)
+        #    print('\rPropagating batch %d/%d' % (i + 1, n_batches), end='', flush=True)
         #import ipdb
         #ipdb.set_trace()
         start = i * batch_size
@@ -140,10 +141,10 @@ def calculate_frechet_distance(mu1, sigma1, mu2, sigma2, eps=1e-6):
     -- mu1   : Numpy array containing the activations of a layer of the
                inception net (like returned by the function 'get_predictions')
                for generated samples.
-    -- mu2   : The sample mean over activations, precalculated on an 
+    -- mu2   : The sample mean over activations, precalculated on an
                representive data set.
     -- sigma1: The covariance matrix over activations for generated samples.
-    -- sigma2: The covariance matrix over activations, precalculated on an 
+    -- sigma2: The covariance matrix over activations, precalculated on an
                representive data set.
 
     Returns:
@@ -210,6 +211,7 @@ def calculate_activation_statistics(images, model, batch_size=64,
     sigma = np.cov(act, rowvar=False)
     return mu, sigma
 
+
 def _compute_statistics_of_path(path, model, batch_size, dims, cuda):
     if path.endswith('.npz'):
         f = np.load(path)
@@ -225,6 +227,7 @@ def _compute_statistics_of_path(path, model, batch_size, dims, cuda):
         dataloader = torch.utils.data.DataLoader(dataset=dataset, batch_size=batch_size, shuffle=False, drop_last=True, num_workers=8)
         m, s = calculate_activation_statistics(dataloader, model, batch_size, dims, cuda)
     return m, s
+
 
 def calculate_fid_given_paths(paths, batch_size, cuda, dims):
     """Calculates the FID of two paths"""
@@ -243,12 +246,13 @@ def calculate_fid_given_paths(paths, batch_size, cuda, dims):
     fid_value = calculate_frechet_distance(m1, s1, m2, s2)
     return fid_value
 
+
 if __name__ == '__main__':
     args = parser.parse_args()
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
-    paths = ["",""]
+    paths = ["", ""]
     paths[0] = args.path1
     paths[1] = args.path2
     print(paths)
-    fid_value = calculate_fid_given_paths(paths, args.batch_size,args.gpu,args.dims)
+    fid_value = calculate_fid_given_paths(paths, args.batch_size, args.gpu, args.dims)
     print('FID: ', fid_value)

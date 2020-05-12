@@ -48,7 +48,7 @@ def func_attention(query, context, gamma1):
     attn = torch.bmm(contextT, query)  # Eq. (7) in AttnGAN paper
     # --> batch*sourceL x queryL
     attn = attn.view(batch_size * sourceL, queryL)
-    attn = nn.Softmax()(attn)  # Eq. (8)
+    attn = nn.Softmax(dim=1)(attn)  # Eq. (8)
 
     # --> batch x sourceL x queryL
     attn = attn.view(batch_size, sourceL, queryL)
@@ -57,7 +57,7 @@ def func_attention(query, context, gamma1):
     attn = attn.view(batch_size * queryL, sourceL)
     #  Eq. (9)
     attn = attn * gamma1
-    attn = nn.Softmax()(attn)
+    attn = nn.Softmax(dim=1)(attn)
     attn = attn.view(batch_size, queryL, sourceL)
     # --> batch x sourceL x queryL
     attnT = torch.transpose(attn, 1, 2).contiguous()
@@ -79,7 +79,7 @@ class GlobalAttentionGeneral(nn.Module):
     def applyMask(self, mask):
         self.mask = mask  # batch x sourceL
 
-    def forward(self, input, context_key, content_value):#
+    def forward(self, input, context_key, content_value):
         """
             input: batch x idf x ih x iw (queryL=ihxiw)
             context: batch x cdf x sourceL
@@ -102,7 +102,7 @@ class GlobalAttentionGeneral(nn.Module):
         # -->batch x queryL x sourceL
         attn = torch.bmm(targetT, sourceT)
 
-        text_weighted = None
+        # text_weighted = None
         # text_attn = torch.transpose(attn, 1, 2).contiguous() # batch x sourceL x queryL
         # text_attn = text_attn.view(batch_size*sourceL, queryL)
         # if self.mask is not None:
